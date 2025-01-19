@@ -1,0 +1,33 @@
+{
+  "name": "codewrap",
+  "version": "0.0.1",
+  "description": "Get a personalized year in review for any VSCode based editor",
+  "keywords": [],
+  "license": "MIT",
+  "repository": "cawd/codewrap-cli",
+  "author": "cawd",
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "bin": {
+    "package-name": "./dist/cli.mjs"
+  },
+  "scripts": {
+    "build": "pkgroll --minify",
+    "type-check": "tsc",
+    "dev": "npm run build && node dist/cli.mjs"
+  },
+  "devDependencies": {
+    "@types/node": "^18.14.0",
+    "pkgroll": "^1.9.0",
+    "typescript": "^4.9.5"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.1",
+    "lang-map": "^0.4.0",
+    "moment": "^2.30.1",
+    "uuid": "^11.0.5",
+    "zod": "^3.24.1"
+  }
+}
