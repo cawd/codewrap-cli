@@ -1,57 +1,46 @@
-import fs, { existsSync, readdirSync } from "fs";
+import { existsSync, readdirSync } from "fs";
 import { homedir } from "os";
 import { join } from "path";
 import { isNotNull, pluck } from "./lib/types.util.js";
 import {
   readInFolder,
   processFolder,
-  ProcessedEntryFile,
+  getYearData,
+  sortIntoYears,
+  YearData,
 } from "./utils/data-fetching.js";
 import {
-  getLanguageStats,
-  getMostPopularDate,
-  getMostPopularDayOfWeek,
-  getMostPopularFiles,
-  getMostPopularHours,
-} from "./utils/stats.js";
-import {
   intro,
-  confirm,
   isCancel,
   cancel,
   text,
-  select,
   multiselect,
   log,
-  tasks,
   outro,
   spinner,
+  select,
 } from "@clack/prompts";
-import { v4 } from "uuid";
+import { parseJson } from "./lib/json.util.js";
+import { z } from "zod";
+import { isErr } from "./lib/result.util.js";
+import dotenv from "dotenv";
 
-const cursorExists = join(
-  homedir(),
-  "Library",
-  "Application Support",
-  "Code",
-  "User",
-  "History"
-);
+dotenv.config();
 
-const codeExists = join(
-  homedir(),
-  "Library",
-  "Application Support",
-  "Code",
-  "User",
-  "History"
-);
+const API_PATH =
+  process.env.NODE_ENV_CODEWRAP === "development"
+    ? "http://localhost:3000/api/upload"
+    : "https://www.codewrap.dev/api/upload";
+const SITE_PATH =
+  process.env.NODE_ENV_CODEWRAP === "development"
+    ? "http://localhost:3000/view/"
+    : "https://codewrap.dev/view/";
 
 const cursorPath = generateEditorPath("Cursor");
 const codePath = generateEditorPath("Code");
 
 export async function main() {
-  intro(`Welcome to code wrapped!`);
+  intro(`Welcome to codewrap by cawd!`);
 
   const IDEPaths: {
     name: string;
@@ -68,16 +57,14 @@ export async function main() {
   });
 
   if (isCancel(projectType)) {
-    cancel("Code wrapped cancelled.");
+    cancel("Codewrap cancelled.");
     process.exit(0);
   }
 
   if (projectType.includes("Cursor")) {
     const exists = existsSync(cursorPath);
     if (!exists) {
-      log.warning(
-        `We couldn't find change history for Cursor, it'll be ignored.`
-      );
+      log.warning(`We couldn't find data for Cursor, it'll be ignored.`);
     } else {
       IDEPaths.push({
         name: "Cursor",
@@ -89,9 +76,7 @@ export async function main() {
   if (projectType.includes("Code")) {
     const exists = existsSync(codePath);
     if (!exists) {
-      log.warning(
-        `We couldn't find change history for Code, it'll be ignored.`
-      );
+      log.warning(`We couldn't find data for Code, it'll be ignored.`);
     } else {
       IDEPaths.push({
         name: "Code",
@@ -100,36 +85,62 @@ export async function main() {
     }
   }
 
-  const customPathResponse = await text({
-    message: `We've found change history for ${IDEPaths.map(pluck("name")).join(" & ")}. Do you want to add a custom IDE name?`,
-    placeholder: "Name of vscode fork (enter to skip)",
+  const addCustomEditor = await select({
+    message: `Do you want to use data from any other editors besides ${IDEPaths.map(pluck("name")).join(" & ")}? ↓ ↑`,
+    options: [
+      { value: "No", label: "No" },
+      { value: "Yes", label: "Yes" },
+    ],
+  });
+
+  if (addCustomEditor === "Yes") {
+    const customPathResponse = await text({
+      message: `We've found data for ${IDEPaths.map(pluck("name")).join(" & ")}. What's the name of the editor you want to add?`,
+      placeholder: "Name of vscode fork (enter to skip)",
+      initialValue: "",
+      validate: (value) => {
+        if (["cursor", "code"].includes(value.toLocaleLowerCase())) {
+          return `You can't use '${value.toLocaleLowerCase()}' as an IDE name.`;
+        }
+      },
+    });
+
+    if (isCancel(customPathResponse)) {
+      cancel("Codewrap cancelled.");
+      process.exit(0);
+    }
+
+    if (customPathResponse) {
+      const customPath = generateEditorPath(customPathResponse);
+      if (existsSync(customPath)) {
+        log.success(`We've found data for '${customPathResponse}'`);
+        IDEPaths.push({
+          name: customPath,
+          path: customPath,
+        });
+      } else {
+        log.warning(
+          `We couldn't find data for '${customPathResponse}', it'll be ignored.`
+        );
+      }
+    }
+  }
+
+  const githubResponse = await text({
+    message: `What's your GitHub username? (no @)`,
+    placeholder: "(enter to skip)",
     initialValue: "",
     validate: (value) => {
-      if (["cursor", "code"].includes(value.toLocaleLowerCase())) {
-        return `You can't use '${value.toLocaleLowerCase()}' as an IDE name.`;
+      if (value.toLocaleLowerCase().includes("@")) {
+        return 'Do not include "@" in your GitHub username.';
       }
     },
   });
 
-  if (isCancel(customPathResponse)) {
-    cancel("Code wrapped cancelled.");
-    process.exit(0);
-  }
-
-  if (customPathResponse) {
-    const customPath = generateEditorPath(customPathResponse);
-    if (existsSync(customPath)) {
-      log.success(`We've found change history for '${customPathResponse}'`);
-      IDEPaths.push({
-        name: customPath,
-        path: customPath,
-      });
-    } else {
-      log.warning(
-        `We couldn't find change history for '${customPathResponse}', it'll be ignored.`
-      );
-    }
-  }
+  const github =
+    typeof githubResponse === "string" && githubResponse.trim().length > 0
+      ? githubResponse
+      : null;
 
   const s = spinner();
 
@@ -142,40 +153,22 @@ export async function main() {
 
   s.message("Crunching the numbers...");
 
-  const stats = generateStats(entryFiles);
-
   await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const allChanges = entryFiles.flatMap(getYearData);
+  const yearData = sortIntoYears(allChanges);
 
   s.message("Uploading analytics...");
 
-  await new Promise((resolve) => setTimeout(resolve, 5000));
+  const { id, accessToken } = await uploadAnalytics(yearData, github);
 
   s.stop("Uploaded analytics!");
 
-  log.success(
-    `View your analytics here: https://code-wrapped.vercel.app/${v4()}`
-  );
+  const link = SITE_PATH + id;
 
-  outro(`Thanks for using code wrapped!`);
-}
+  log.success(`Success! View your code wrap: ${link}`);
 
-export function generateStats(entryFiles: ProcessedEntryFile[]) {
-  const languageData = getLanguageStats(entryFiles);
-  const mostPopularFiles = getMostPopularFiles(entryFiles);
-
-  const allTimestamps = entryFiles.flatMap((entry) => entry.timestamps);
-  const mostPopularDates = getMostPopularDate(allTimestamps);
-  const mostPopularDaysOfWeek = getMostPopularDayOfWeek(allTimestamps);
-  const mostPopularHours = getMostPopularHours(allTimestamps);
-
-  return {
-    numberOfChanges: allTimestamps.length,
-    languageData: languageData.slice(0, 10),
-    mostPopularFiles: mostPopularFiles.slice(0, 10),
-    mostPopularDates,
-    mostPopularDaysOfWeek,
-    mostPopularHours,
-  };
+  outro(`Thanks for using codewrap by cawd!`);
 }
 
 function getEntriesForEditor(editorPath: string) {
@@ -197,4 +190,39 @@ function generateEditorPath(appName: string) {
     "User",
     "History"
   );
+}
+
+async function uploadAnalytics(yearData: YearData[], github: string | null) {
+  const response = await fetch(API_PATH, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      data: yearData,
+      ...(github && { github }),
+    }),
+  });
+
+  if (!response.ok) {
+    log.error(`Failed to upload analytics: ${response.status}`);
+    throw new Error("Failed to upload analytics");
+  }
+
+  const bodyJson = await response.text();
+
+  const body = parseJson(
+    z.object({
+      id: z.string(),
+      accessToken: z.string(),
+    }),
+    bodyJson
+  );
+
+  if (isErr(body)) {
+    log.error(`Failed to parse response: ${body.error}`);
+    throw new Error("Failed to parse response");
+  }
+
+  return body.value;
 }

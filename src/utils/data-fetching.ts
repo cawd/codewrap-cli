@@ -3,8 +3,7 @@ import { join } from "path";
 import { z } from "zod";
 import { parseJson } from "../lib/json.util.js";
 import { isErr } from "../lib/result.util.js";
-import { homedir } from "os";
-import map from "lang-map";
+import moment from "moment";
 
 const EntryFile = z.object({
   version: z.number(),
@@ -38,10 +37,20 @@ export function readInFolder(editorPath: string, folder: string) {
 
 export interface ProcessedEntryFile {
   fileLocation: string;
-  language: string;
   changes: number;
   timestamps: number[];
 }
+
+export interface YearData {
+  year: number;
+  changes: {
+    file: string;
+    timestamp: number;
+  }[];
+}
+
+// Most edited file
+// Count number of occurrences in changes array
 
 export function processFolder(
   entryFile: z.infer<typeof EntryFile>
@@ -52,16 +61,10 @@ export function processFolder(
     return null;
   }
 
-  const language = map.languages(transformFileExtension(fileExtension))[0];
-  if (!language) {
-    return null;
-  }
-
   const timestamps = entryFile.entries.map((entry) => entry.timestamp);
 
   return {
     fileLocation: entryFile.resource.split("file://")[1],
-    language,
     changes: entryFile.entries.length,
     timestamps,
   };
@@ -71,8 +74,37 @@ function transformFileExtension(fileExtension: string) {
   const map = new Map([
     ["jsx", "js"],
     ["cjs", "js"],
+    ["mjs", "js"],
     ["tsx", "ts"],
   ]);
 
   return map.get(fileExtension) ?? fileExtension;
+}
+
+export function getYearData(processedEntry: ProcessedEntryFile) {
+  return processedEntry.timestamps
+    .map((timestamp) => ({
+      file: processedEntry.fileLocation,
+      timestamp,
+    }))
+    .filter((change) => typeof change.file === "string")
+    .sort((a, b) => a.timestamp - b.timestamp);
+}
+
+export function sortIntoYears(changes: YearData["changes"]): YearData[] {
+  const years = changes.reduce(
+    (acc, change) => {
+      const year = moment(change.timestamp).year();
+      acc[year] = (acc[year] ?? []).concat(change);
+      return acc;
+    },
+    {} as Record<number, YearData["changes"]>
+  );
+
+  return Object.entries(years)
+    .map(([year, changes]) => ({
+      year: parseInt(year),
+      changes,
+    }))
+    .sort((a, b) => a.year - b.year);
 }
