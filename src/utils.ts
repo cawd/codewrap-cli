@@ -35,9 +35,11 @@ const SITE_PATH =
   process.env.NODE_ENV_CODEWRAP === "development"
     ? "http://localhost:3000/view/"
     : "https://codewrap.dev/view/";
+const platform = process.platform;
 
-const cursorPath = generateEditorPath("Cursor");
-const codePath = generateEditorPath("Code");
+
+let cursorPath = generateEditorPath("Cursor");
+let codePath = generateEditorPath("Code");
 
 export async function main() {
   intro(`Welcome to codewrap by cawd!`);
@@ -62,28 +64,106 @@ export async function main() {
   }
 
   if (projectType.includes("Cursor")) {
-    const exists = existsSync(cursorPath);
-    if (!exists) {
-      log.warning(`We couldn't find data for Cursor, it'll be ignored.`);
-    } else {
+    let exists = existsSync(cursorPath);
+		if (!exists) {
+			const addCustomPath = await select({
+				message: `We couldn't find data for Cursor, it'll be ignored. Want to add custom path for Cursor? `,
+        options: [
+          { value: "Yes", label: "Yes" },
+          { value: "No", label: "No" },
+        ],
+			});
+
+      if (isCancel(addCustomPath)) {
+        cancel("Codewrap cancelled.");
+        process.exit(0);
+      }
+
+      if (addCustomPath === "Yes") {
+        const customPathResponse = await text({
+          message: `What's the path to your Cursor history?`,
+          placeholder: generateEditorPath("Cursor"),
+          initialValue: "",
+				});
+
+        if (isCancel(customPathResponse)) {
+          cancel("Codewrap cancelled.");
+          process.exit(0);
+        }
+
+				if (customPathResponse) {
+					cursorPath = String(customPathResponse);
+					exists = existsSync(cursorPath);
+					if (!exists) {
+						log.warning(
+							`We couldn't find data for '${cursorPath}', it'll be ignored.`
+						);
+					} else {
+            IDEPaths.push({
+              name: "Cursor",
+              path: cursorPath,
+            });
+          }
+				}
+			}
+		} else {
       IDEPaths.push({
         name: "Cursor",
         path: cursorPath,
       });
-    }
+		}
   }
 
   if (projectType.includes("Code")) {
-    const exists = existsSync(codePath);
+    let exists = existsSync(codePath);
     if (!exists) {
-      log.warning(`We couldn't find data for Code, it'll be ignored.`);
-    } else {
+			const addCustomPath = await select({
+				message: `We couldn't find data for Code, it'll be ignored. Want to add custom path for Code?`,
+        options: [
+          { value: "Yes", label: "Yes" },
+          { value: "No", label: "No" },
+        ],
+			});
+
+      if (isCancel(addCustomPath)) {
+        cancel("Codewrap cancelled.");
+        process.exit(0);
+      }
+
+      if (addCustomPath === "Yes") {
+        const customPathResponse = await text({
+          message: `What's the path to your Code history?`,
+          placeholder: generateEditorPath("Code"),
+          initialValue: "",
+				});
+
+        if (isCancel(customPathResponse)) {
+          cancel("Codewrap cancelled.");
+          process.exit(0);
+        }
+
+				if (customPathResponse) {
+					codePath = String(customPathResponse);
+					exists = existsSync(codePath);
+					if (!exists) {
+						log.warning(
+							`We couldn't find data for '${codePath}', it'll be ignored.`
+						);
+					} else {
+            IDEPaths.push({
+              name: "Code",
+              path: codePath,
+            });
+          }
+				}
+			}
+		} else {
       IDEPaths.push({
         name: "Code",
         path: codePath,
       });
-    }
-  }
+		}
+	}
 
   const addCustomEditor = await select({
     message: `Do you want to use data from any other editors besides ${IDEPaths.map(pluck("name")).join(" & ")}? ↓ ↑`,
@@ -182,15 +262,22 @@ function getEntriesForEditor(editorPath: string) {
 }
 
 function generateEditorPath(appName: string) {
-  return join(
-    homedir(),
-    "Library",
-    "Application Support",
-    appName,
-    "User",
-    "History"
-  );
+	if (platform === "linux") {
+		return join(homedir(), ".config", appName, "User", "History");
+	} else if (platform === "win32") {
+		return join(homedir(), "AppData", "Roaming", appName, "User", "History");
+	} else {
+		return join(
+			homedir(),
+			"Library",
+			"Application Support",
+			appName,
+			"User",
+			"History"
+		);
+	}
 }
+
 
 async function uploadAnalytics(yearData: YearData[], github: string | null) {
   const response = await fetch(API_PATH, {
