@@ -86,7 +86,9 @@ export async function main() {
   }
 
   const addCustomEditor = await select({
-    message: `Do you want to use data from any other editors besides ${IDEPaths.map(pluck("name")).join(" & ")}? ↓ ↑`,
+    message: `Do you want to use data from any other editors besides ${IDEPaths.map(
+      pluck("name")
+    ).join(" & ")}? ↓ ↑`,
     options: [
       { value: "No", label: "No" },
       { value: "Yes", label: "Yes" },
@@ -95,7 +97,9 @@ export async function main() {
 
   if (addCustomEditor === "Yes") {
     const customPathResponse = await text({
-      message: `We've found data for ${IDEPaths.map(pluck("name")).join(" & ")}. What's the name of the editor you want to add?`,
+      message: `We've found data for ${IDEPaths.map(pluck("name")).join(
+        " & "
+      )}. What's the name of the editor you want to add?`,
       placeholder: "Name of vscode fork (enter to skip)",
       initialValue: "",
       validate: (value) => {
@@ -182,14 +186,27 @@ function getEntriesForEditor(editorPath: string) {
 }
 
 function generateEditorPath(appName: string) {
-  return join(
-    homedir(),
-    "Library",
-    "Application Support",
-    appName,
-    "User",
-    "History"
-  );
+  const platform = process.platform;
+
+  if (platform === "darwin") {
+    // macOS
+    return join(
+      homedir(),
+      "Library",
+      "Application Support",
+      appName,
+      "User",
+      "History"
+    );
+  }
+
+  if (platform === "win32") {
+    // Windows
+    return join(homedir(), "AppData", "Roaming", appName, "User", "History");
+  }
+
+  // Default fallback to Linux-style path
+  return join(homedir(), ".config", appName, "User", "History");
 }
 
 async function uploadAnalytics(yearData: YearData[], github: string | null) {
