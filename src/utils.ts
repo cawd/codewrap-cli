@@ -198,10 +198,9 @@ function generateEditorPath(appName: string) {
       "User",
       "History"
     );
-  } else if (platform === "linux") {
-    // Linux
-    return join(homedir(), ".config", appName, "User", "History");
-  } else if (platform === "win32") {
+  }
+
+  if (platform === "win32") {
     // Windows
     return join(homedir(), "AppData", "Roaming", appName, "User", "History");
   }
