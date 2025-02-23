@@ -64,7 +64,7 @@ export function processFolder(
   const timestamps = entryFile.entries.map((entry) => entry.timestamp);
 
   return {
-    fileLocation: entryFile.resource.split("file://")[1],
+    fileLocation: entryFile.resource.split("://")[1],
     changes: entryFile.entries.length,
     timestamps,
   };
