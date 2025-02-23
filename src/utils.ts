@@ -84,13 +84,15 @@ export async function main() {
         name: "Code",
         path: codePath,
       });
+    }
 
-      if (process.platform === 'linux' && existsSync(codeRemotePath)) {
-        IDEPaths.push({
-          name: "Code - Remote",
-          path: codeRemotePath
-        })
-      }
+    if (process.platform === 'linux' && existsSync(codeRemotePath)) {
+      IDEPaths.push({
+        name: "Code - Remote",
+        path: codeRemotePath
+      });
+
+      log.success('Note: We found some remote information, we\'ll use it as well')
     }
   }
 
