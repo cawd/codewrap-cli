@@ -37,7 +37,9 @@ const SITE_PATH =
     : "https://codewrap.dev/view/";
 
 const cursorPath = generateEditorPath("Cursor");
+
 const codePath = generateEditorPath("Code");
+const codeRemotePath = generateEditorPath("Code", true);
 
 export async function main() {
   intro(`Welcome to codewrap by cawd!`);
@@ -82,6 +84,13 @@ export async function main() {
         name: "Code",
         path: codePath,
       });
+
+      if (process.platform === 'linux' && existsSync(codeRemotePath)) {
+        IDEPaths.push({
+          name: "Code - Remote",
+          path: codeRemotePath
+        })
+      }
     }
   }
 
@@ -185,7 +194,7 @@ function getEntriesForEditor(editorPath: string) {
     .filter(isNotNull);
 }
 
-function generateEditorPath(appName: string) {
+function generateEditorPath(appName: string, remoteServer = false) {
   const platform = process.platform;
 
   if (platform === "darwin") {
@@ -203,6 +212,10 @@ function generateEditorPath(appName: string) {
   if (platform === "win32") {
     // Windows
     return join(homedir(), "AppData", "Roaming", appName, "User", "History");
+  }
+
+  if (remoteServer) {
+    return join(homedir(), ".vscode-server", "data", "User", "History")
   }
 
   // Default fallback to Linux-style path
